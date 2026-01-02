@@ -16,6 +16,27 @@ export interface Customer {
   phone?: string;
 }
 
+export interface Vendor {
+  id: string;
+  name: string;
+  category: string;
+  status: 'active' | 'pending' | 'auto-pay';
+  color: string;
+  createdAt: string;
+}
+
+export interface ExpenseRecord {
+  id: string;
+  amount: number;
+  description: string;
+  vendorId?: string;
+  category: string;
+  date: string;
+  paymentStatus: 'paid' | 'pending' | 'recurring';
+  accountId: string; // The Money Lab account used for payment
+  createdAt: string;
+}
+
 export interface CreditBillEntry {
   customerId: string;
   customerName: string;
@@ -31,18 +52,18 @@ export interface ShiftExpense {
 
 export interface ShiftInjection {
   id: string;
-  source: string; // e.g., 'business_bank', 'owner_equity'
+  source: string;
   amount: number;
 }
 
 export interface ShiftFlowConfig {
-  salesAccount: string;      // Usually Main Sales Income
-  cardsAccount: string;      // Usually Business Bank
-  hikingAccount: string;     // Usually Hiking Bar Rec
-  fxAccount: string;         // Usually FX Reserve
-  billsAccount: string;      // Usually Bills to Receive
-  cashAccount: string;       // Usually Main Cash Till
-  varianceAccount: string;   // Usually Expense or Loss account
+  salesAccount: string;      
+  cardsAccount: string;      
+  hikingAccount: string;     
+  fxAccount: string;         
+  billsAccount: string;      
+  cashAccount: string;       
+  varianceAccount: string;   
 }
 
 export interface StaffMember {
@@ -52,8 +73,6 @@ export interface StaffMember {
   salary: number;
   loanBalance: number;
   color: string;
-  isActive: boolean;
-  joinedAt: number;
 }
 
 export interface HolidayRecord {
@@ -67,10 +86,9 @@ export interface Shift {
   status: 'open' | 'closed';
   startTime: string;
   endTime?: string;
-  accountingDate: string; // The date this shift actually represents
+  accountingDate: string;
   openingFloat: number;
   totalSales: number;
-  // Non-cash breakdown
   cards: number;
   hikingBar: number;
   foreignCurrency: {
@@ -80,7 +98,6 @@ export interface Shift {
   creditBills: CreditBillEntry[];
   injections: ShiftInjection[];
   expenses: ShiftExpense[];
-  // Calculated
   expectedCash: number;
   actualCash?: number;
   difference?: number;
@@ -96,7 +113,8 @@ export interface Transaction {
   accountId: string;
   createdAt: string;
   shiftId?: string;
-  staffId?: string; // Optional reference for payroll/advances
+  staffId?: string;
+  expenseId?: string; // Optional reference to a business expense
 }
 
 export interface Account {
