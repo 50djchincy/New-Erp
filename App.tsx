@@ -8,6 +8,7 @@ import MoneyLab from './pages/MoneyLab';
 import Ledger from './pages/Ledger';
 import DailyOps from './pages/DailyOps';
 import Settings from './pages/Settings';
+import Staff from './pages/Staff';
 
 const AppContent: React.FC = () => {
   const { user, loading, currentPage } = useApp();
@@ -31,6 +32,7 @@ const AppContent: React.FC = () => {
     <Layout>
       {currentPage === 'dashboard' && <Dashboard />}
       {currentPage === 'dailyops' && <DailyOps />}
+      {currentPage === 'staff' && <Staff />}
       {currentPage === 'moneylab' && <MoneyLab />}
       {currentPage === 'ledger' && <Ledger />}
       {currentPage === 'settings' && <Settings />}

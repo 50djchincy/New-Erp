@@ -1,9 +1,9 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { AppMode, User, Account, Transaction, Shift, Customer, ShiftFlowConfig } from '../types';
+import { AppMode, User, Account, Transaction, Shift, Customer, ShiftFlowConfig, StaffMember, HolidayRecord } from '../types';
 import { auth, db, getArtifactCollection } from '../firebase';
 import { onAuthStateChanged, signInAnonymously, signOut } from 'firebase/auth';
-import { addDoc, onSnapshot, query, orderBy, updateDoc, doc, setDoc, increment } from 'firebase/firestore';
+import { addDoc, onSnapshot, query, orderBy, updateDoc, doc, setDoc, increment, deleteDoc, collection } from 'firebase/firestore';
 
 const DEFAULT_FLOW: ShiftFlowConfig = {
   salesAccount: '',
@@ -23,6 +23,8 @@ interface AppContextType {
   accounts: Account[];
   transactions: Transaction[];
   shifts: Shift[];
+  staff: StaffMember[];
+  holidays: HolidayRecord[];
   activeShift: Shift | null;
   customers: Customer[];
   flowConfig: ShiftFlowConfig;
@@ -38,6 +40,12 @@ interface AppContextType {
   startShift: (openingFloat: number, initialInjections: any[], accountingDate: string) => Promise<void>;
   updateActiveShift: (updates: Partial<Shift>) => Promise<void>;
   closeShift: (actualCash: number) => Promise<void>;
+  resetSandbox: () => void;
+  // Staff Methods
+  addStaff: (data: Omit<StaffMember, 'id' | 'joinedAt' | 'isActive'>) => Promise<void>;
+  updateStaff: (id: string, updates: Partial<StaffMember>) => Promise<void>;
+  deleteStaff: (id: string) => Promise<void>;
+  toggleHoliday: (staffId: string, date: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -53,6 +61,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [holidays, setHolidays] = useState<HolidayRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [flowConfig, setFlowConfigState] = useState<ShiftFlowConfig>(DEFAULT_FLOW);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
@@ -93,16 +103,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const unsubAcc = onSnapshot(query(getArtifactCollection('accounts'), orderBy('createdAt', 'desc')), (s) => setAccounts(s.docs.map(d => ({ id: d.id, ...d.data() } as Account))));
       const unsubTrans = onSnapshot(query(getArtifactCollection('transactions'), orderBy('date', 'desc')), (s) => setTransactions(s.docs.map(d => ({ id: d.id, ...d.data() } as Transaction))));
       const unsubShift = onSnapshot(query(getArtifactCollection('shifts'), orderBy('startTime', 'desc')), (s) => setShifts(s.docs.map(d => ({ id: d.id, ...d.data() } as Shift))));
+      const unsubStaff = onSnapshot(query(getArtifactCollection('staff'), orderBy('joinedAt', 'desc')), (s) => setStaff(s.docs.map(d => ({ id: d.id, ...d.data() } as StaffMember))));
+      const unsubHolidays = onSnapshot(query(getArtifactCollection('holidays')), (s) => setHolidays(s.docs.map(d => ({ id: d.id, ...d.data() } as HolidayRecord))));
       const unsubCust = onSnapshot(query(getArtifactCollection('customers'), orderBy('name', 'asc')), (s) => setCustomers(s.docs.map(d => ({ id: d.id, ...d.data() } as Customer))));
       const unsubFlow = onSnapshot(doc(getArtifactCollection('config'), 'shift_flow'), (d) => {
         if (d.exists()) setFlowConfigState(d.data() as ShiftFlowConfig);
       });
 
-      return () => { unsubAcc(); unsubTrans(); unsubShift(); unsubCust(); unsubFlow(); };
+      return () => { unsubAcc(); unsubTrans(); unsubShift(); unsubStaff(); unsubHolidays(); unsubCust(); unsubFlow(); };
     } else {
       setAccounts(JSON.parse(localStorage.getItem('mozza_sandbox_accounts') || '[]'));
       setTransactions(JSON.parse(localStorage.getItem('mozza_sandbox_transactions') || '[]'));
       setShifts(JSON.parse(localStorage.getItem('mozza_sandbox_shifts') || '[]'));
+      setStaff(JSON.parse(localStorage.getItem('mozza_sandbox_staff') || '[]'));
+      setHolidays(JSON.parse(localStorage.getItem('mozza_sandbox_holidays') || '[]'));
       setCustomers(JSON.parse(localStorage.getItem('mozza_sandbox_customers') || '[{"id":"1","name":"Regular Guest"},{"id":"2","name":"VIP Table 5"}]'));
       setFlowConfigState(JSON.parse(localStorage.getItem('mozza_sandbox_flow') || JSON.stringify(DEFAULT_FLOW)));
     }
@@ -160,7 +174,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const newId = Math.random().toString(36).substr(2, 9);
       const newTransaction = { ...newItem, id: newId };
       
-      // CRITICAL: Use functional updates to avoid stale state issues during rapid sequential calls
       setTransactions(prev => {
         const updated = [newTransaction, ...prev];
         localStorage.setItem('mozza_sandbox_transactions', JSON.stringify(updated));
@@ -175,6 +188,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return acc;
         });
         localStorage.setItem('mozza_sandbox_accounts', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  // Staff CRUD
+  const addStaff = async (data: Omit<StaffMember, 'id' | 'joinedAt' | 'isActive'>) => {
+    const newItem = { ...data, joinedAt: Date.now(), isActive: true };
+    if (mode === 'live') {
+      await addDoc(getArtifactCollection('staff'), newItem);
+    } else {
+      setStaff(prev => {
+        const updated = [{ ...newItem, id: Math.random().toString(36).substr(2, 9) }, ...prev];
+        localStorage.setItem('mozza_sandbox_staff', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  const updateStaff = async (id: string, updates: Partial<StaffMember>) => {
+    if (mode === 'live') {
+      await updateDoc(doc(getArtifactCollection('staff'), id), updates);
+    } else {
+      setStaff(prev => {
+        const updated = prev.map(s => s.id === id ? { ...s, ...updates } : s);
+        localStorage.setItem('mozza_sandbox_staff', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  const deleteStaff = async (id: string) => {
+    if (mode === 'live') {
+      await deleteDoc(doc(getArtifactCollection('staff'), id));
+    } else {
+      setStaff(prev => {
+        const updated = prev.filter(s => s.id !== id);
+        localStorage.setItem('mozza_sandbox_staff', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  const toggleHoliday = async (staffId: string, date: string) => {
+    const existing = holidays.find(h => h.staffId === staffId && h.date === date);
+    if (mode === 'live') {
+      if (existing) {
+        await deleteDoc(doc(getArtifactCollection('holidays'), existing.id));
+      } else {
+        await addDoc(getArtifactCollection('holidays'), { staffId, date });
+      }
+    } else {
+      setHolidays(prev => {
+        let updated;
+        if (existing) {
+          updated = prev.filter(h => h.id !== existing.id);
+        } else {
+          updated = [...prev, { id: Math.random().toString(36).substr(2, 9), staffId, date }];
+        }
+        localStorage.setItem('mozza_sandbox_holidays', JSON.stringify(updated));
         return updated;
       });
     }
@@ -225,8 +298,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (mode === 'live') {
       const shiftRef = doc(getArtifactCollection('shifts'), activeShift.id);
-      // We only update locally-tracked shift fields in live mode for performance, 
-      // but status change is handled in closeShift
       await updateDoc(shiftRef, { ...updates, expectedCash: updatedShift.expectedCash });
     } else {
       setShifts(prev => {
@@ -255,10 +326,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       closedBy: user?.displayName || 'Unknown'
     };
 
-    // --- SWEEP LOGIC ---
-    // 1. Log Gross Sales to Income Account
+    // 1. Log Gross Sales
     await addTransaction({
-      description: `Sales Revenue (${closedShift.accountingDate})`,
+      description: `Daily Sales (${closedShift.accountingDate})`,
       amount: closedShift.totalSales,
       category: 'Revenue',
       date: closedShift.endTime,
@@ -266,44 +336,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       shiftId: closedShift.id
     });
 
-    // 2. Transfer non-cash components out of Sales Account to their targets
+    // 2. Transfers
     if (closedShift.cards > 0) {
       await addTransaction({ description: `Sales Card Sweep`, amount: -closedShift.cards, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
       await addTransaction({ description: `Card Settlement Receipt`, amount: closedShift.cards, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.cardsAccount, shiftId: closedShift.id });
     }
 
     if (closedShift.hikingBar > 0) {
-      await addTransaction({ description: `Hiking Bar Shift Portion`, amount: -closedShift.hikingBar, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
-      await addTransaction({ description: `Hiking Bar Receivable Log`, amount: closedShift.hikingBar, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.hikingAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `Hiking Portion Sweep`, amount: -closedShift.hikingBar, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `Hiking Bar Receivable`, amount: closedShift.hikingBar, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.hikingAccount, shiftId: closedShift.id });
     }
 
     if (closedShift.foreignCurrency.value > 0) {
-      await addTransaction({ description: `FX Reserve Transfer`, amount: -closedShift.foreignCurrency.value, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
-      await addTransaction({ description: `FX Reserve: ${closedShift.foreignCurrency.comment}`, amount: closedShift.foreignCurrency.value, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.fxAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `FX Reserve Sweep`, amount: -closedShift.foreignCurrency.value, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `FX Reserve (${closedShift.foreignCurrency.comment})`, amount: closedShift.foreignCurrency.value, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.fxAccount, shiftId: closedShift.id });
     }
 
     for (const bill of closedShift.creditBills) {
-      await addTransaction({ description: `Credit Bill: ${bill.customerName}`, amount: -bill.amount, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
-      await addTransaction({ description: `Receivable: ${bill.customerName}`, amount: bill.amount, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.billsAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `Credit Bill Sweep: ${bill.customerName}`, amount: -bill.amount, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `Guest Receivable: ${bill.customerName}`, amount: bill.amount, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.billsAccount, shiftId: closedShift.id });
     }
 
-    // 3. Subtract expenses from Cash account
+    // 3. Expenses
     for (const exp of closedShift.expenses) {
       await addTransaction({ description: `Shift Expense: ${exp.description}`, amount: -exp.amount, category: exp.category, date: closedShift.endTime, accountId: flowConfig.cashAccount, shiftId: closedShift.id });
     }
 
-    // 4. Move remaining Cash portion from Sales Account to Cash Account
+    // 4. Final Cash Move
     const totalNonCash = closedShift.cards + closedShift.hikingBar + closedShift.foreignCurrency.value + closedShift.creditBills.reduce((a,b)=>a+b.amount,0);
     const cashSales = closedShift.totalSales - totalNonCash;
     if (cashSales > 0) {
-      await addTransaction({ description: `Cash Sales Deposit`, amount: -cashSales, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
-      await addTransaction({ description: `Cash Sales Receipt`, amount: cashSales, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.cashAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `Cash Portion Sweep`, amount: -cashSales, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.salesAccount, shiftId: closedShift.id });
+      await addTransaction({ description: `Shift Cash Receipt`, amount: cashSales, category: 'Transfer', date: closedShift.endTime, accountId: flowConfig.cashAccount, shiftId: closedShift.id });
     }
 
-    // 5. Handle Variance Adjustment
+    // 5. Variance
     if (closedShift.difference !== 0) {
        await addTransaction({
-         description: `Shift Cash Variance (${closedShift.difference > 0 ? 'Over' : 'Short'})`,
+         description: `Cash Variance Adjustment`,
          amount: closedShift.difference,
          category: 'Adjustment',
          date: closedShift.endTime,
@@ -311,7 +381,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
          shiftId: closedShift.id
        });
        await addTransaction({
-         description: `Cash Variance Correction`,
+         description: `Variance Correction in Till`,
          amount: closedShift.difference,
          category: 'Adjustment',
          date: closedShift.endTime,
@@ -320,7 +390,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
        });
     }
 
-    // Finalize shift record
+    // Finalize
     if (mode === 'live') {
       const shiftRef = doc(getArtifactCollection('shifts'), activeShift.id);
       await updateDoc(shiftRef, {
@@ -344,11 +414,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const resetSandbox = () => {
+    localStorage.removeItem('mozza_sandbox_accounts');
+    localStorage.removeItem('mozza_sandbox_transactions');
+    localStorage.removeItem('mozza_sandbox_shifts');
+    localStorage.removeItem('mozza_sandbox_staff');
+    localStorage.removeItem('mozza_sandbox_holidays');
+    localStorage.removeItem('mozza_sandbox_flow');
+    setAccounts([]);
+    setTransactions([]);
+    setShifts([]);
+    setStaff([]);
+    setHolidays([]);
+    setFlowConfigState(DEFAULT_FLOW);
+    setCurrentPage('dashboard');
+  };
+
   return (
     <AppContext.Provider value={{ 
       mode, user, loading, currentPage, setCurrentPage, toggleMode, login, logout, 
-      accounts, transactions, shifts, activeShift, customers, flowConfig, selectedAccountId, 
-      setSelectedAccountId, setFlowConfig, addAccount, addTransaction, startShift, updateActiveShift, closeShift 
+      accounts, transactions, shifts, staff, holidays, activeShift, customers, flowConfig, selectedAccountId, 
+      setSelectedAccountId, setFlowConfig, addAccount, addTransaction, startShift, updateActiveShift, closeShift,
+      resetSandbox,
+      addStaff, updateStaff, deleteStaff, toggleHoliday
     }}>
       {children}
     </AppContext.Provider>

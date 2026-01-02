@@ -9,7 +9,8 @@ import {
   LogOut,
   ChevronRight,
   Beaker,
-  Zap
+  Zap,
+  Users
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -43,6 +44,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               label="Daily Ops" 
               active={currentPage === 'dailyops'} 
               onClick={() => setCurrentPage('dailyops')}
+            />
+            <NavItem 
+              icon={<Users size={20} />} 
+              label="Staff Hub" 
+              active={currentPage === 'staff'} 
+              onClick={() => setCurrentPage('staff')}
             />
             <NavItem 
               icon={<Beaker size={20} />} 
@@ -112,6 +119,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           label="Ops" 
           active={currentPage === 'dailyops'} 
           onClick={() => setCurrentPage('dailyops')}
+        />
+        <BottomNavItem 
+          icon={<Users size={24} />} 
+          label="Staff" 
+          active={currentPage === 'staff'} 
+          onClick={() => setCurrentPage('staff')}
         />
         <BottomNavItem 
           icon={<Beaker size={24} />} 

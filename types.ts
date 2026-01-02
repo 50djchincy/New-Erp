@@ -45,6 +45,23 @@ export interface ShiftFlowConfig {
   varianceAccount: string;   // Usually Expense or Loss account
 }
 
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  salary: number;
+  loanBalance: number;
+  color: string;
+  isActive: boolean;
+  joinedAt: number;
+}
+
+export interface HolidayRecord {
+  id: string;
+  staffId: string;
+  date: string;
+}
+
 export interface Shift {
   id: string;
   status: 'open' | 'closed';
@@ -79,6 +96,7 @@ export interface Transaction {
   accountId: string;
   createdAt: string;
   shiftId?: string;
+  staffId?: string; // Optional reference for payroll/advances
 }
 
 export interface Account {

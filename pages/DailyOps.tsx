@@ -23,7 +23,8 @@ import {
   Zap,
   Calendar,
   ArrowRight,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Loader2
 } from 'lucide-react';
 import { ShiftInjection, ShiftExpense, CreditBillEntry } from '../types';
 
@@ -32,6 +33,7 @@ const DailyOps: React.FC = () => {
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showCalcModal, setShowCalcModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
@@ -40,6 +42,8 @@ const DailyOps: React.FC = () => {
 
   const isConfigComplete = Object.values(flowConfig).every(val => val !== '');
 
+  // If no active shift is found, we show the "Start Shift" screen.
+  // This is the default state when the app boots or after a successful sweep.
   if (!activeShift) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-8 animate-in fade-in slide-in-from-bottom-4">
@@ -85,6 +89,19 @@ const DailyOps: React.FC = () => {
   const getAccountName = (id: string) => {
     if (!id) return 'UNMAPPED';
     return accounts.find(a => a.id === id)?.name || 'Unknown Account';
+  };
+
+  const handleFinalClose = async (actualCash: number) => {
+    setIsProcessing(true);
+    try {
+      await closeShift(actualCash);
+      setShowCloseModal(false);
+    } catch (error) {
+      console.error("Sweep failed", error);
+      alert("Error executing sweep. Please check your account connections.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -191,7 +208,7 @@ const DailyOps: React.FC = () => {
       {activeMenu === 'expenses' && <ExpensesModal targetAccount={getAccountName(flowConfig.cashAccount)} current={activeShift.expenses} onClose={()=>setActiveMenu(null)} onSave={(val)=>updateActiveShift({expenses: val})} />}
       
       {showCalcModal && <CashCalcModal onClose={() => setShowCalcModal(false)} onFinalize={() => setShowCloseModal(true)} />}
-      {showCloseModal && <CloseShiftModal activeShift={activeShift} onClose={() => setShowCloseModal(false)} onConfirm={closeShift} />}
+      {showCloseModal && <CloseShiftModal activeShift={activeShift} isProcessing={isProcessing} onClose={() => setShowCloseModal(false)} onConfirm={handleFinalClose} />}
     </div>
   );
 };
@@ -487,7 +504,7 @@ const CashCalcModal = ({ onClose, onFinalize }: any) => {
   );
 };
 
-const CloseShiftModal = ({ activeShift, onClose, onConfirm }: any) => {
+const CloseShiftModal = ({ activeShift, isProcessing, onClose, onConfirm }: any) => {
   const lastCalc = localStorage.getItem('mozza_last_calc_total');
   const [actual, setActual] = useState(lastCalc || '');
   const diff = (parseFloat(actual) || 0) - activeShift.expectedCash;
@@ -515,8 +532,27 @@ const CloseShiftModal = ({ activeShift, onClose, onConfirm }: any) => {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={onClose} className="h-16 rounded-2xl font-black text-slate-400 bg-slate-100">RE-CHECK</button>
-          <button onClick={() => { onConfirm(parseFloat(actual)); onClose(); localStorage.removeItem('mozza_last_calc_total'); }} className="h-16 rounded-2xl font-black text-white bg-slate-900">EXECUTE SWEEP</button>
+          <button 
+            disabled={isProcessing}
+            onClick={onClose} 
+            className="h-16 rounded-2xl font-black text-slate-400 bg-slate-100 disabled:opacity-50"
+          >
+            RE-CHECK
+          </button>
+          <button 
+            disabled={isProcessing}
+            onClick={() => { onConfirm(parseFloat(actual)); localStorage.removeItem('mozza_last_calc_total'); }} 
+            className="h-16 rounded-2xl font-black text-white bg-slate-900 disabled:bg-slate-700 flex items-center justify-center gap-2"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                SWEEPING...
+              </>
+            ) : (
+              'EXECUTE SWEEP'
+            )}
+          </button>
         </div>
       </div>
     </div>

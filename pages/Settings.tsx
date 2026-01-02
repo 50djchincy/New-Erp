@@ -16,15 +16,18 @@ import {
   Info,
   Save,
   CheckCircle2,
-  PlusCircle
+  PlusCircle,
+  Trash2,
+  RefreshCcw
 } from 'lucide-react';
 import { ShiftFlowConfig } from '../types';
 
 const Settings: React.FC = () => {
-  const { flowConfig, setFlowConfig, accounts, setCurrentPage } = useApp();
+  const { flowConfig, setFlowConfig, accounts, setCurrentPage, mode, resetSandbox } = useApp();
   const [localFlowConfig, setLocalFlowConfig] = useState<ShiftFlowConfig>(flowConfig);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     setLocalFlowConfig(flowConfig);
@@ -48,6 +51,11 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleReset = () => {
+    resetSandbox();
+    setShowResetConfirm(false);
+  };
+
   const hasChanges = JSON.stringify(localFlowConfig) !== JSON.stringify(flowConfig);
 
   const sections = [
@@ -69,6 +77,7 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
+      {/* Shift Flow Config Card */}
       <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
           <div className="flex items-center gap-4">
@@ -168,6 +177,56 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
+      {/* Danger Zone / Reset Sandbox */}
+      {mode === 'sandbox' && (
+        <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-red-50">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-600">
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-900">Danger Zone</h2>
+                <p className="text-sm text-slate-400 font-medium">Reset your sandbox operational environment</p>
+              </div>
+            </div>
+
+            {!showResetConfirm ? (
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="flex items-center gap-2 px-8 py-4 rounded-2xl font-bold bg-white border-2 border-red-100 text-red-600 hover:bg-red-50 transition-all active:scale-95"
+              >
+                <RefreshCcw size={20} />
+                <span>Reset Sandbox Data</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="px-6 py-4 rounded-2xl font-bold text-slate-400 hover:bg-slate-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="px-8 py-4 rounded-2xl font-black bg-red-600 text-white shadow-lg shadow-red-100 hover:bg-red-700 transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <Trash2 size={20} />
+                  CONFIRM WIPE
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {showResetConfirm && (
+            <div className="mt-6 p-4 bg-red-50 rounded-2xl border border-red-100 text-red-700 text-xs font-bold animate-in fade-in slide-in-from-top-2">
+              ⚠️ WARNING: This will permanently delete all sandbox accounts, transactions, and shifts. This action cannot be undone.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* General Configuration (Disabled/Dummy) */}
       <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 opacity-50 pointer-events-none">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-900">General Configuration</h2>

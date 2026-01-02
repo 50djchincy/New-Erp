@@ -1,10 +1,10 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { ShieldCheck, ChevronRight, FlaskConical, Zap, Info } from 'lucide-react';
+import { ShieldCheck, ChevronRight, FlaskConical, Zap, Info, RefreshCw } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const { login, mode, toggleMode } = useApp();
+  const { login, mode, toggleMode, resetSandbox } = useApp();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -101,13 +101,22 @@ const Login: React.FC = () => {
           </form>
 
           {mode === 'sandbox' && (
-            <div className="mt-8 p-4 bg-orange-50/50 rounded-2xl border border-orange-100 flex gap-3">
-              <div className="shrink-0 text-orange-400 mt-0.5">
-                <Info size={18} />
+            <div className="mt-8 flex flex-col gap-4">
+              <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100 flex gap-3">
+                <div className="shrink-0 text-orange-400 mt-0.5">
+                  <Info size={18} />
+                </div>
+                <p className="text-[13px] leading-relaxed text-orange-800">
+                  Sandbox mode uses local storage. Any data added will stay on this device only.
+                </p>
               </div>
-              <p className="text-[13px] leading-relaxed text-orange-800">
-                Sandbox mode uses local storage. Any data added will stay on this device only. Perfect for trial runs!
-              </p>
+              <button 
+                onClick={() => { if(confirm('Reset all local data?')) resetSandbox(); }}
+                className="flex items-center justify-center gap-2 text-xs font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest"
+              >
+                <RefreshCw size={14} />
+                Reset Sandbox
+              </button>
             </div>
           )}
         </div>
