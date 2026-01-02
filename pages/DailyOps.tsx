@@ -22,12 +22,13 @@ import {
   Wallet,
   Zap,
   Calendar,
-  ArrowRight
+  ArrowRight,
+  Settings as SettingsIcon
 } from 'lucide-react';
 import { ShiftInjection, ShiftExpense, CreditBillEntry } from '../types';
 
 const DailyOps: React.FC = () => {
-  const { activeShift, shifts, customers, startShift, updateActiveShift, closeShift, flowConfig, accounts } = useApp();
+  const { activeShift, shifts, customers, startShift, updateActiveShift, closeShift, flowConfig, accounts, setCurrentPage } = useApp();
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showCalcModal, setShowCalcModal] = useState(false);
@@ -36,6 +37,8 @@ const DailyOps: React.FC = () => {
 
   const lastShift = shifts.find(s => s.status === 'closed');
   const lastActualCash = lastShift?.actualCash || 0;
+
+  const isConfigComplete = Object.values(flowConfig).every(val => val !== '');
 
   if (!activeShift) {
     return (
@@ -79,10 +82,30 @@ const DailyOps: React.FC = () => {
   const totalNonCash = activeShift.cards + activeShift.hikingBar + activeShift.foreignCurrency.value + totalBills;
   const cashSales = activeShift.totalSales - totalNonCash;
 
-  const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Unknown Account';
+  const getAccountName = (id: string) => {
+    if (!id) return 'UNMAPPED';
+    return accounts.find(a => a.id === id)?.name || 'Unknown Account';
+  };
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
+      {/* Configuration Alert */}
+      {!isConfigComplete && (
+        <div className="bg-orange-50 border border-orange-100 p-4 rounded-3xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-orange-700">
+            <AlertCircle size={24} />
+            <p className="text-sm font-bold">Incomplete Flow Configuration! Shift cannot be swept until accounts are mapped.</p>
+          </div>
+          <button 
+            onClick={() => setCurrentPage('settings')}
+            className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-orange-100"
+          >
+            <SettingsIcon size={14} />
+            FIX IN SETTINGS
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-6">
           <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] flex items-center justify-center text-white shadow-lg shadow-blue-100">
@@ -125,7 +148,9 @@ const DailyOps: React.FC = () => {
             
             <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-300 uppercase tracking-wider">
               <span>{item.id === 'expenses' ? 'FROM' : 'TO'}</span>
-              <span className="text-slate-500 truncate max-w-[120px]">{getAccountName(item.target)}</span>
+              <span className={`truncate max-w-[120px] ${!item.target ? 'text-red-500 font-black animate-pulse' : 'text-slate-500'}`}>
+                {getAccountName(item.target)}
+              </span>
             </div>
 
             <div className="mt-auto flex items-center justify-between w-full pt-2">
@@ -148,11 +173,13 @@ const DailyOps: React.FC = () => {
       <div className="flex flex-col items-center pt-8 space-y-4">
         <button 
           onClick={() => setShowCalcModal(true)}
-          className="flex items-center gap-4 bg-slate-900 text-white px-12 py-6 rounded-[2.5rem] font-black text-xl shadow-2xl shadow-slate-200 hover:bg-blue-600 transition-all active:scale-95"
+          className="flex items-center gap-4 bg-slate-900 text-white px-12 py-6 rounded-[2.5rem] font-black text-xl shadow-2xl shadow-slate-200 hover:bg-blue-600 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!isConfigComplete}
         >
           <Calculator size={24} />
           FINAL CASH COUNT
         </button>
+        {!isConfigComplete && <p className="text-red-500 text-xs font-black uppercase tracking-widest">Complete Configuration to Unlock Close</p>}
         <p className="text-slate-400 text-sm font-medium italic">Count denomination-by-denomination for total accuracy</p>
       </div>
 
@@ -169,8 +196,70 @@ const DailyOps: React.FC = () => {
   );
 };
 
-// --- MODALS FOR FLOW EDITOR WITH TARGET ACCOUNT FEEDBACK ---
+// ... Start Modal ...
+const ShiftStartModal = ({ onClose, lastActualCash, onStart }: any) => {
+  const [openingFloat, setOpeningFloat] = useState(lastActualCash);
+  const [accountingDate, setAccountingDate] = useState(new Date().toISOString().split('T')[0]);
+  const [topUp, setTopUp] = useState('');
+  const [topUpSource, setTopUpSource] = useState('business_bank');
 
+  const handleStart = () => {
+    const injections = [];
+    if (parseFloat(topUp) > 0) {
+      injections.push({ id: Date.now().toString(), source: topUpSource, amount: parseFloat(topUp) });
+    }
+    onStart(openingFloat, injections, accountingDate);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
+      <div className="relative bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 animate-in zoom-in duration-300">
+        <h2 className="text-2xl font-black text-slate-900 mb-2">Service Initialization</h2>
+        <p className="text-slate-500 text-sm mb-8">Setup your operational data for this session.</p>
+        
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Accounting Date</label>
+            <input 
+              type="date"
+              value={accountingDate}
+              onChange={(e) => setAccountingDate(e.target.value)}
+              className="w-full h-14 px-6 bg-slate-50 border-none rounded-2xl text-slate-900 font-bold focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="p-5 bg-blue-50 rounded-3xl border border-blue-100">
+            <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1 block">Float Carry Forward</label>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-black text-blue-700">${lastActualCash.toLocaleString()}</span>
+              <button onClick={() => setOpeningFloat(lastActualCash)} className="text-[10px] font-black text-blue-600 bg-white px-3 py-1.5 rounded-xl shadow-sm">USE ACTUAL</button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Initial Opening Float</label>
+            <input 
+              type="number"
+              value={openingFloat}
+              onChange={(e) => setOpeningFloat(parseFloat(e.target.value) || 0)}
+              className="w-full h-16 px-6 bg-slate-50 border-none rounded-2xl text-slate-900 font-black text-xl focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <button 
+            onClick={handleStart}
+            className="w-full h-16 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-100 hover:bg-blue-700 mt-4 transition-all"
+          >
+            OPEN REGISTER
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ... Shared Modal Components ...
 const MenuModal = ({ title, targetAccount, children, onClose }: any) => (
   <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
@@ -181,7 +270,7 @@ const MenuModal = ({ title, targetAccount, children, onClose }: any) => (
       </div>
       <div className="flex items-center gap-2 mb-6 px-3 py-1 bg-slate-50 rounded-xl w-fit">
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Post to:</span>
-        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{targetAccount}</span>
+        <span className={`text-[10px] font-black uppercase tracking-widest ${targetAccount === 'UNMAPPED' ? 'text-red-500 animate-pulse' : 'text-blue-600'}`}>{targetAccount}</span>
       </div>
       {children}
     </div>
@@ -361,70 +450,6 @@ const ExpensesModal = ({ current, targetAccount, onClose, onSave }: any) => {
         <button onClick={()=>{onSave(exps); onClose();}} className="w-full h-14 bg-red-600 text-white rounded-2xl font-black mt-2">SAVE EXPENSES</button>
       </div>
     </MenuModal>
-  );
-};
-
-// --- STARTUP MODAL ---
-
-const ShiftStartModal = ({ onClose, lastActualCash, onStart }: any) => {
-  const [openingFloat, setOpeningFloat] = useState(lastActualCash);
-  const [accountingDate, setAccountingDate] = useState(new Date().toISOString().split('T')[0]);
-  const [topUp, setTopUp] = useState('');
-  const [topUpSource, setTopUpSource] = useState('business_bank');
-
-  const handleStart = () => {
-    const injections = [];
-    if (parseFloat(topUp) > 0) {
-      injections.push({ id: Date.now().toString(), source: topUpSource, amount: parseFloat(topUp) });
-    }
-    onStart(openingFloat, injections, accountingDate);
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
-      <div className="relative bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 animate-in zoom-in duration-300">
-        <h2 className="text-2xl font-black text-slate-900 mb-2">Service Initialization</h2>
-        <p className="text-slate-500 text-sm mb-8">Setup your operational data for this session.</p>
-        
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Accounting Date</label>
-            <input 
-              type="date"
-              value={accountingDate}
-              onChange={(e) => setAccountingDate(e.target.value)}
-              className="w-full h-14 px-6 bg-slate-50 border-none rounded-2xl text-slate-900 font-bold focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="p-5 bg-blue-50 rounded-3xl border border-blue-100">
-            <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1 block">Float Carry Forward</label>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-black text-blue-700">${lastActualCash.toLocaleString()}</span>
-              <button onClick={() => setOpeningFloat(lastActualCash)} className="text-[10px] font-black text-blue-600 bg-white px-3 py-1.5 rounded-xl shadow-sm">USE ACTUAL</button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Initial Opening Float</label>
-            <input 
-              type="number"
-              value={openingFloat}
-              onChange={(e) => setOpeningFloat(parseFloat(e.target.value) || 0)}
-              className="w-full h-16 px-6 bg-slate-50 border-none rounded-2xl text-slate-900 font-black text-xl focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <button 
-            onClick={handleStart}
-            className="w-full h-16 bg-blue-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-100 hover:bg-blue-700 mt-4 transition-all"
-          >
-            OPEN REGISTER
-          </button>
-        </div>
-      </div>
-    </div>
   );
 };
 
