@@ -76,6 +76,11 @@ const Staff: React.FC = () => {
   const [payrollConfig, setPayrollConfig] = useState<PayrollConfig | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // --- Unified Account Filter for Payouts ---
+  const payoutSources = useMemo(() => 
+    accounts.filter(a => ['cash', 'bank', 'income', 'asset'].includes(a.type)),
+  [accounts]);
+
   // --- Date Range Logic (15th to 14th) ---
   const periodRange = useMemo(() => {
     const year = currentMonth.getFullYear();
@@ -121,6 +126,7 @@ const Staff: React.FC = () => {
     const formData = new FormData(e.target as HTMLFormElement);
     setActionLoading(true);
     try {
+      // Fix: Remove 'isActive' and 'joinedAt' from the addStaff call as they are omitted in the function's parameter type and handled inside the function.
       await addStaff({
         name: formData.get('name') as string,
         role: formData.get('role') as string,
@@ -142,6 +148,11 @@ const Staff: React.FC = () => {
     const formData = new FormData(e.target as HTMLFormElement);
     const amount = Number(formData.get('amount'));
     const sourceId = formData.get('source') as string;
+
+    if (!sourceId) {
+      alert("Please select a payout source account.");
+      return;
+    }
 
     setActionLoading(true);
     try {
@@ -168,6 +179,11 @@ const Staff: React.FC = () => {
     const amount = Number(formData.get('amount'));
     const sourceId = formData.get('source') as string;
 
+    if (!sourceId) {
+      alert("Please select a payout source account.");
+      return;
+    }
+
     setActionLoading(true);
     try {
       await addTransaction({
@@ -191,13 +207,17 @@ const Staff: React.FC = () => {
     const s = staff.find(sm => sm.id === staffId);
     if (!s) return;
     const advances = getOutstandingAdvances(staffId);
+    
+    // Default to the first bank account or any liquid source
+    const defaultSourceId = payoutSources.find(a => a.type === 'bank')?.id || payoutSources[0]?.id || '';
+
     setPayrollConfig({
       staff: s,
       type,
       baseAmount: type === 'SALARY' ? s.salary : 0,
       advancesTotal: advances,
       loanRepayment: 0,
-      sourceId: accounts.find(a => a.type === 'bank')?.id || ''
+      sourceId: defaultSourceId
     });
   };
 
@@ -205,6 +225,11 @@ const Staff: React.FC = () => {
     if (!payrollConfig) return;
     const { staff: s, type, baseAmount, advancesTotal, loanRepayment, sourceId } = payrollConfig;
     const netPay = baseAmount - advancesTotal - loanRepayment;
+
+    if (!sourceId) {
+      alert("Please select a payout source account.");
+      return;
+    }
 
     setActionLoading(true);
     try {
@@ -589,12 +614,14 @@ const Staff: React.FC = () => {
               <div className="space-y-1.5">
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Payout Source</label>
                  <select name="source" required className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 text-slate-900 font-bold">
-                    {accounts.filter(a => ['cash', 'bank'].includes(a.type)).map(a => (
+                    <option value="">Select Payout Source...</option>
+                    {payoutSources.map(a => (
                       <option key={a.id} value={a.id}>{a.name} (${a.balance.toLocaleString()})</option>
                     ))}
                  </select>
+                 {payoutSources.length === 0 && <p className="text-[10px] text-red-500 font-bold mt-1">Setup source accounts in Money Lab first.</p>}
               </div>
-              <button disabled={actionLoading} type="submit" className="w-full py-5 bg-amber-500 text-white rounded-[1.5rem] font-black shadow-xl shadow-amber-100 active:scale-95 transition-all flex items-center justify-center gap-3">
+              <button disabled={actionLoading || payoutSources.length === 0} type="submit" className="w-full py-5 bg-amber-500 text-white rounded-[1.5rem] font-black shadow-xl shadow-amber-100 active:scale-95 transition-all flex items-center justify-center gap-3">
                 {actionLoading ? <Loader2 className="animate-spin" size={24} /> : <Zap size={24} />} DISBURSE ADVANCE
               </button>
            </form>
@@ -624,12 +651,14 @@ const Staff: React.FC = () => {
               <div className="space-y-1.5">
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Payout Source</label>
                  <select name="source" required className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 text-slate-900 font-bold">
-                    {accounts.filter(a => ['cash', 'bank'].includes(a.type)).map(a => (
+                    <option value="">Select Payout Source...</option>
+                    {payoutSources.map(a => (
                       <option key={a.id} value={a.id}>{a.name} (${a.balance.toLocaleString()})</option>
                     ))}
                  </select>
+                 {payoutSources.length === 0 && <p className="text-[10px] text-red-500 font-bold mt-1">Setup source accounts in Money Lab first.</p>}
               </div>
-              <button disabled={actionLoading} type="submit" className="w-full py-5 bg-red-600 text-white rounded-[1.5rem] font-black shadow-xl shadow-red-100 active:scale-95 transition-all flex items-center justify-center gap-3">
+              <button disabled={actionLoading || payoutSources.length === 0} type="submit" className="w-full py-5 bg-red-600 text-white rounded-[1.5rem] font-black shadow-xl shadow-red-100 active:scale-95 transition-all flex items-center justify-center gap-3">
                 {actionLoading ? <Loader2 className="animate-spin" size={24} /> : <Zap size={24} />} ISSUE LOAN
               </button>
            </form>
@@ -691,7 +720,8 @@ const Staff: React.FC = () => {
                     onChange={(e) => setPayrollConfig({...payrollConfig, sourceId: e.target.value})}
                     className="w-full h-12 bg-slate-50 border-none rounded-xl px-4 text-slate-900 font-bold"
                  >
-                    {accounts.filter(a => ['cash', 'bank'].includes(a.type)).map(a => (
+                    <option value="">Select Payout Source...</option>
+                    {payoutSources.map(a => (
                       <option key={a.id} value={a.id}>{a.name} (${a.balance.toLocaleString()})</option>
                     ))}
                  </select>
@@ -699,7 +729,7 @@ const Staff: React.FC = () => {
 
               <button 
                 onClick={confirmPayout}
-                disabled={actionLoading}
+                disabled={actionLoading || payoutSources.length === 0}
                 className="w-full mt-6 py-5 bg-slate-900 text-white rounded-[2rem] font-black shadow-2xl shadow-slate-200 active:scale-95 transition-all flex items-center justify-center gap-3 uppercase tracking-widest"
               >
                 {actionLoading ? <Loader2 className="animate-spin" size={24} /> : <CheckCircle2 size={24} />} 
