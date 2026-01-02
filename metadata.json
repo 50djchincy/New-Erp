@@ -1,0 +1,7 @@
+{
+  "name": "Mozzarella Expenses",
+  "description": "A clean, modern restaurant operations suite for tracking expenses and managing financial performance with Sandbox and Live modes.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
